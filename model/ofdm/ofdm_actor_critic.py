@@ -28,11 +28,11 @@ class OFDMActorCritic(nn.Module):
         keys = data[0].keys()
         data = {k: [d[k] for d in data] for k in keys}
         graph, power_level, beam_idx, allocated = data['graph'], data['power_level'], data['beam_idx'], data['allocated']
-        allocated = torch.tensor(np.concat(allocated, axis=0)).to(device)  # batch/node, rb
-        power_level = torch.tensor(np.concat(power_level, axis=0)).to(device)  # batch/node, rb
+        allocated = torch.tensor(np.concatenate(allocated, axis=0)).to(device)  # batch/node, rb
+        power_level = torch.tensor(np.concatenate(power_level, axis=0)).to(device)  # batch/node, rb
         power_level = F.one_hot(power_level.long(), self.num_tx_power_level).float()  # batch/node, rb, power_level
         power_level[torch.logical_not(allocated[:, :, None].expand(-1, -1, self.num_tx_power_level))] = 0.0
-        beam_idx = torch.tensor(np.concat(beam_idx, axis=0)).to(device)  # batch/node, rb
+        beam_idx = torch.tensor(np.concatenate(beam_idx, axis=0)).to(device)  # batch/node, rb
         beam_idx = F.one_hot(beam_idx.long(), self.num_beam).float()  # batch/node, rb, beam
         beam_idx[torch.logical_not(allocated[:, :, None].expand(-1, -1, self.num_beam))] = 0.0
         input = torch.cat([power_level, beam_idx], dim=2).flatten(start_dim=-2, end_dim=-1)  # batch/node, input_dim

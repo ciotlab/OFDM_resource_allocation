@@ -5,7 +5,7 @@ import torch.nn.functional as F
 from torch.nn import Linear, Dropout, LayerNorm
 from torch.nn.init import xavier_uniform_, constant_
 from torch.distributions.categorical import Categorical
-from torch_geometric.nn import TransformerConv
+from torch_geometric.nn import TransformerConv, AttentionalAggregation
 from torch_geometric.nn.pool import global_mean_pool
 
 
@@ -30,19 +30,31 @@ class ActorCritic(nn.Module):
             dim_feedforward=self._dim_feedforward, dropout=self._dropout, activation=self._activation
         )
         self._actor_linear = Linear(in_features=self._d_model, out_features=self._action_dim)
-        self._critic_linear = Linear(in_features=self._d_model, out_features=1)
+        self._critic_head = nn.Sequential(
+                                Linear(in_features=self._d_model, out_features=self._d_model),
+                                nn.ReLU(),
+                                Linear(in_features=self._d_model, out_features=self._d_model),
+                                nn.ReLU(),
+                                Linear(in_features=self._d_model, out_features=1)
+                            )
+        gate_nn = nn.Sequential(nn.Linear(self._d_model, 1))
+        self._attention_pool = AttentionalAggregation(gate_nn)
         self._reset_parameters()
 
     def _reset_parameters(self):
         nn.init.xavier_uniform_(self._actor_linear.weight)
         nn.init.constant_(self._actor_linear.bias, 0.)
-        nn.init.xavier_uniform_(self._critic_linear.weight)
-        nn.init.constant_(self._critic_linear.bias, 0.)
+        # nn.init.xavier_uniform_(self._critic_linear.weight)
+        # nn.init.constant_(self._critic_linear.bias, 0.)
+        for layer in self._critic_head:
+            if isinstance(layer, nn.Linear):
+                xavier_uniform_(layer.weight)
+                constant_(layer.bias, 0.)
 
     def forward(self, input, node_embedding, edge_attr, edge_index, ptr, batch):
         x = self._graph_transformer(input=input, node_embedding=node_embedding,
                                     edge_attr=edge_attr, edge_index=edge_index)
-        value = global_mean_pool(x=x, batch=batch)
+        value = self._attention_pool(x, batch)
         value = self._critic_linear(value)[:, 0]  # batch
         policy_logit = self._actor_linear(x)  # batch/node, action
         num_batch = int(ptr.shape[0]) - 1

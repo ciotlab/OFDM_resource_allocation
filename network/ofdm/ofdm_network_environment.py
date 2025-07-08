@@ -42,7 +42,7 @@ class OFDMNetworkEnvironment(NetworkEnvironment):
     def reset(self):
         power_level = np.full(shape=(self.num_ue, self.num_rb), fill_value=0, dtype=np.int32)
         beam_idx = np.full(shape=(self.num_ue, self.num_rb), fill_value=0, dtype=np.int32)
-        allocated = np.full(shape=(self.num_ue, self.num_rb), fill_value=False, dtype=np.bool)
+        allocated = np.full(shape=(self.num_ue, self.num_rb), fill_value=False, dtype=bool)
         resource_allocation = {'power_level': power_level, 'beam_idx': beam_idx, 'allocated': allocated,}
         self.set_resource_allocation(resource_allocation)
 
@@ -51,7 +51,7 @@ class OFDMNetworkEnvironment(NetworkEnvironment):
         self.beam_idx = resource_allocation['beam_idx']
         allocated = resource_allocation['allocated']
         self.allocated = allocated if allocated is not None\
-            else np.full(shape=(self.num_ue, self.num_rb), fill_value=True, dtype=np.bool)
+            else np.full(shape=(self.num_ue, self.num_rb), fill_value=True, dtype=bool)
         self.compute_network_state_and_score()
 
     def get_resource_allocation(self):

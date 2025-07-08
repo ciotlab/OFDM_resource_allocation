@@ -2,7 +2,7 @@
 network:
   generator:
     data_dir: 'myeongdong_arr_4_rb_16'
-    num_ue_range: [ 20, 40 ]
+    num_ue_range: [ 50, 100 ]
     num_rb: 16
     num_beam: 4
   environment:
@@ -21,10 +21,10 @@ network:
 # model config
 model:
   d_model: 512
-  n_head: 8
-  dim_feedforward: 1024
-  num_layers: 8
-  dropout: 0.0
+  n_head: 16
+  dim_feedforward: 512
+  num_layers: 4
+  dropout: 0.1
   activation: 'gelu'
 
 # run config
@@ -34,23 +34,23 @@ run:
   num_simulator: 16
   serve_num_replicas: 4
   serve_max_ongoing_requests: 35
-  serve_max_batch_size: 32
+  serve_max_batch_size: 64
   serve_batch_wait_timeout_s: 0.01
   num_training_workers: 4
 
 # simulation config
 simulation:
-  gamma: 1.0  # for computing lambda returns
-  lamb: 0.0  # for computing lambda returns (0: TD(1), 1: MC)
+  gamma: 0.99  # for computing lambda returns
+  lamb: 0.95  # for computing lambda returns (0: TD(1), 1: MC)
   max_num_steps: 4000  # null if no limitation
 
 # neural network train config
 train:
   num_epochs_per_episode: 3
-  batch_size: 32
-  learning_rate: 0.0001
+  batch_size: 128
+  learning_rate: 0.0003
   act_prob_ratio_exponent_clip: 1.0
   ppo_clip: 0.1
-  entropy_loss_weight: 0.01
+  entropy_loss_weight: 0.05
   value_loss_weight: 1.0
   clip_max_norm: 1.0

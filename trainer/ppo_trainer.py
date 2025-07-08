@@ -12,7 +12,8 @@ def ppo_train_loop_per_worker(config):
     network_actor, model_actor = config['network_actor'], config['model_actor']
     # Prepare graph and model
     graph_list = ray.get(network_actor.get_graph_list.remote())
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    #device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    device = train.get_device()
     model_info = ray.get(model_actor.get_model_info.remote())
     model = model_info['model_cls'](network_conf=model_info['network_conf'],
                                     model_conf=model_info['model_conf']).to(device)
