@@ -123,6 +123,7 @@ class GraphTransformer(nn.Module):
         self._node_embedding_linear = Linear(in_features=self._embedding_dim, out_features=self._d_model, bias=True, device=device)
         self._fusion_linear = Linear(in_features=d_model * 3, out_features=d_model)
         self._layer_list = nn.ModuleList()
+        self.final_norm = LayerNorm(d_model, eps=1e-5, device=device)
         for _ in range(self._num_layers):
             layer = GraphTransformerLayer(d_model=self._d_model, n_head=self._n_head,
                                           edge_dim=self._edge_dim,
@@ -146,6 +147,7 @@ class GraphTransformer(nn.Module):
             fused_update = self._fusion_linear(combined_features)
             x = x + fused_update
             x = layer(x, edge_attr, edge_index)
+        x = self.final_norm(x)
         return x
 
 
@@ -197,10 +199,19 @@ class GraphTransformerLayer(nn.Module):
         self._trans_conv.reset_parameters()
 
     def forward(self, x, edge_attr, edge_index):
-        x2 = self._trans_conv(x=x, edge_index=edge_index.long(), edge_attr=edge_attr, return_attention_weights=None)
+        # x2 = self._trans_conv(x=x, edge_index=edge_index.long(), edge_attr=edge_attr, return_attention_weights=None)
+        # x = x + self.dropout1(x2)
+        # x = self.norm1(x)
+        # x2 = self.ffnn_linear2(self.ffnn_dropout(self.activation(self.ffnn_linear1(x))))
+        # x = x + self.dropout2(x2)
+        # x = self.norm2(x)
+
+        x_norm = self.norm1(x)
+        x2 = self._trans_conv(x=x_norm, edge_index=edge_index.long(), edge_attr=edge_attr, return_attention_weights=None)
         x = x + self.dropout1(x2)
-        x = self.norm1(x)
-        x2 = self.ffnn_linear2(self.ffnn_dropout(self.activation(self.ffnn_linear1(x))))
+        
+        x_norm = self.norm2(x)
+        x2 = self.ffnn_linear2(self.ffnn_dropout(self.activation(self.ffnn_linear1(x_norm))))
         x = x + self.dropout2(x2)
-        x = self.norm2(x)
+
         return x

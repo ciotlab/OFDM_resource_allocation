@@ -44,12 +44,11 @@ def ppo_train_loop_per_worker(config):
     for epoch in range(train_conf['num_epochs_per_episode']):
         dataloader = get_dataloader(train_dataset_shard, train_conf['batch_size'], graph_list)
         for iter, (state, policy_mask, action, old_action_log_prob, returns, value) in enumerate(dataloader):
-            #state = state.to(device)
             policy_logit, v = model(state)
             old_action_log_prob = torch.tensor(old_action_log_prob, device=device)
             returns = torch.tensor(returns, device=device)
             value = torch.tensor(value, device=device)
-            advantage = returns - value
+            advantage = returns - value.detach()
             advantage = (advantage - advantage.mean()) / (advantage.std() + 1e-8)
             action_log_prob = []
             entropy = []
@@ -74,7 +73,7 @@ def ppo_train_loop_per_worker(config):
                                                                   torch.tensor(1 - train_conf['ppo_clip'], device=device)))
             actor_loss = -torch.mean(clipped_action_prob_ratio * advantage)
             entropy_loss = -torch.mean(entropy)
-            value_loss = nn.MSELoss()(value, returns)
+            value_loss = nn.MSELoss()(v, returns)       #### is it value? v?
             total_loss = (actor_loss + train_conf['entropy_loss_weight'] * entropy_loss
                           + train_conf['value_loss_weight'] * value_loss)
             optimizer.zero_grad()

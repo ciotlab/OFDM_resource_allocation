@@ -34,7 +34,7 @@ run:
   num_simulator: 16
   serve_num_replicas: 4
   serve_max_ongoing_requests: 35
-  serve_max_batch_size: 64
+  serve_max_batch_size: 32
   serve_batch_wait_timeout_s: 0.01
   num_training_workers: 4
 
@@ -47,7 +47,7 @@ simulation:
 # neural network train config
 train:
   num_epochs_per_episode: 3
-  batch_size: 128
+  batch_size: 64
   learning_rate: 0.0003
   act_prob_ratio_exponent_clip: 1.0
   ppo_clip: 0.1
