@@ -46,8 +46,8 @@ def ppo_train_loop_per_worker(config):
         for iter, (state, policy_mask, action, old_action_log_prob, returns, value) in enumerate(dataloader):
             policy_logit, v = model(state)
             old_action_log_prob = torch.tensor(old_action_log_prob, device=device)
-            returns = torch.tensor(returns, device=device)
-            value = torch.tensor(value, device=device)
+            returns = torch.tensor(returns, dtype=torch.float32, device=device)
+            value = torch.tensor(value, dtype=torch.float32, device=device)
             advantage = returns - value.detach()
             advantage = (advantage - advantage.mean()) / (advantage.std() + 1e-8)
             action_log_prob = []
