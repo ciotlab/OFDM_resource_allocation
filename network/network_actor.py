@@ -13,7 +13,10 @@ class NetworkActor:
     def generate_networks(self, num_networks):
         self.network_list = self.network_generator.generate_networks(num_networks)
         self.generate_graph()
-
+    
+    def generate_and_save_networks(self, num_networks, directory_name):
+        return self.network_generator.generate_and_save_networks(num_networks, directory_name)
+    
     def put_networks(self, network_list):
         self.network_list = network_list
         self.generate_graph()

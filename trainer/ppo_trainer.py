@@ -12,8 +12,8 @@ def ppo_train_loop_per_worker(config):
     network_actor, model_actor = config['network_actor'], config['model_actor']
     # Prepare graph and model
     graph_list = ray.get(network_actor.get_graph_list.remote())
-    #device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    device = train.get_device()
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    #device = train.get_device()
     model_info = ray.get(model_actor.get_model_info.remote())
     model = model_info['model_cls'](network_conf=model_info['network_conf'],
                                     model_conf=model_info['model_conf']).to(device)
@@ -44,11 +44,13 @@ def ppo_train_loop_per_worker(config):
     for epoch in range(train_conf['num_epochs_per_episode']):
         dataloader = get_dataloader(train_dataset_shard, train_conf['batch_size'], graph_list)
         for iter, (state, policy_mask, action, old_action_log_prob, returns, value) in enumerate(dataloader):
+            #state = state.to(device)
             policy_logit, v = model(state)
             old_action_log_prob = torch.tensor(old_action_log_prob, device=device)
             returns = torch.tensor(returns, device=device)
             value = torch.tensor(value, device=device)
             advantage = returns - value
+            advantage = (advantage - advantage.mean()) / (advantage.std() + 1e-8)
             action_log_prob = []
             entropy = []
             for a, pl, pm in zip(action, policy_logit, policy_mask):

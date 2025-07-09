@@ -55,7 +55,7 @@ class ActorCritic(nn.Module):
         x = self._graph_transformer(input=input, node_embedding=node_embedding,
                                     edge_attr=edge_attr, edge_index=edge_index)
         value = self._attention_pool(x, batch)
-        value = self._critic_linear(value)[:, 0]  # batch
+        value = self._critic_head(value)[:, 0]  # batch
         policy_logit = self._actor_linear(x)  # batch/node, action
         num_batch = int(ptr.shape[0]) - 1
         policy_logit_list = []
@@ -121,6 +121,7 @@ class GraphTransformer(nn.Module):
         self._activation = activation
         self._input_linear = Linear(in_features=self._input_dim, out_features=self._d_model, bias=True, device=device)
         self._node_embedding_linear = Linear(in_features=self._embedding_dim, out_features=self._d_model, bias=True, device=device)
+        self._fusion_linear = Linear(in_features=d_model * 3, out_features=d_model)
         self._layer_list = nn.ModuleList()
         for _ in range(self._num_layers):
             layer = GraphTransformerLayer(d_model=self._d_model, n_head=self._n_head,
@@ -138,9 +139,12 @@ class GraphTransformer(nn.Module):
 
     def forward(self, input, node_embedding, edge_attr, edge_index):
         input = self._input_linear(input)
-        x = self._node_embedding_linear(node_embedding)
+        node_embedding = self._node_embedding_linear(node_embedding)
+        x = node_embedding
         for layer in self._layer_list:
-            x = x + input
+            combined_features = torch.cat([x, input, node_embedding], dim=-1)
+            fused_update = self._fusion_linear(combined_features)
+            x = x + fused_update
             x = layer(x, edge_attr, edge_index)
         return x
 

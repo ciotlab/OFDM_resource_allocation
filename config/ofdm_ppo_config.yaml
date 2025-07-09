@@ -3,7 +3,7 @@ network:
   generator:
     data_dir: 'myeongdong_arr_4_rb_16'
     num_ue_range: [ 50, 100 ]
-    num_rb: 16
+    num_rb: 12
     num_beam: 4
   environment:
     max_tx_power: 5
