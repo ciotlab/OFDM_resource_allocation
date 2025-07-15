@@ -42,7 +42,7 @@ run:
 simulation:
   gamma: 0.99  # for computing lambda returns
   lamb: 0.95  # for computing lambda returns (0: TD(1), 1: MC)
-  max_num_steps: 4000  # null if no limitation
+  max_num_steps: 2000  # null if no limitation
 
 # neural network train config
 train:
