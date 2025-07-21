@@ -5,14 +5,17 @@ import torch.nn.functional as F
 from torch.nn import Linear, Dropout, LayerNorm
 from torch.nn.init import xavier_uniform_, constant_
 from torch.distributions.categorical import Categorical
-from torch_geometric.nn import TransformerConv, AttentionalAggregation
-from torch_geometric.nn.pool import global_mean_pool
-
+from torch_geometric.nn import TransformerConv, AttentionalAggregation, MetaLayer
+from torch_geometric.nn.pool import global_mean_pool, global_add_pool
+from torch_scatter import scatter_mean
 
 class ActorCritic(nn.Module):
     def __init__(self, input_dim, embedding_dim, edge_dim, action_shape,
-                 d_model, n_head, dim_feedforward, num_layers, dropout, activation='gelu'):
-        super(ActorCritic, self).__init__()
+                 d_model, n_head, dim_feedforward, num_layers, dropout, 
+                 activation, global_dim):
+        super().__init__()
+        
+        # 기존 파라미터들
         self._input_dim = input_dim
         self._embedding_dim = embedding_dim
         self._edge_dim = edge_dim
@@ -24,45 +27,98 @@ class ActorCritic(nn.Module):
         self._num_layers = num_layers
         self._dropout = dropout
         self._activation = activation
+        
+        # Graph Transformer
         self._graph_transformer = GraphTransformer(
-            input_dim=self._input_dim, embedding_dim=self._embedding_dim, edge_dim=self._edge_dim,
-            num_layers=self._num_layers, d_model=self._d_model, n_head=self._n_head,
-            dim_feedforward=self._dim_feedforward, dropout=self._dropout, activation=self._activation
+            input_dim=self._input_dim, 
+            embedding_dim=self._embedding_dim, 
+            edge_dim=self._edge_dim,
+            num_layers=1, 
+            d_model=self._d_model, 
+            n_head=self._n_head,
+            dim_feedforward=self._dim_feedforward, 
+            dropout=self._dropout, 
+            activation=self._activation
         )
-        self._actor_linear = Linear(in_features=self._d_model, out_features=self._action_dim)
-        self._critic_head = nn.Sequential(
-                                Linear(in_features=self._d_model, out_features=self._d_model),
-                                nn.ReLU(),
-                                Linear(in_features=self._d_model, out_features=self._d_model),
-                                nn.ReLU(),
-                                Linear(in_features=self._d_model, out_features=1)
-                            )
-        gate_nn = nn.Sequential(nn.Linear(self._d_model, 1))
-        self._attention_pool = AttentionalAggregation(gate_nn)
+
+        self.global_encoder = nn.Linear(global_dim, d_model)
+        self.edge_encoder = nn.Linear(edge_dim, d_model)
+        self.layers = nn.ModuleList([
+            MetaLayer(
+                edge_model=EdgeModel(d_model, d_model, d_model, dim_feedforward),
+                node_model=NodeModel(d_model, d_model, d_model, dim_feedforward),
+                global_model=GlobalModel(d_model, d_model, d_model, dim_feedforward)
+            ) for _ in range(num_layers)
+        ])
+        self.actor_head = nn.Linear(d_model, self._action_dim)
+        self.critic_head = nn.Sequential(
+            nn.Linear(d_model, d_model), nn.ReLU(), nn.Linear(d_model, 1)
+        )
+        self.dropout = nn.Dropout(dropout)
+
         self._reset_parameters()
-
+    
     def _reset_parameters(self):
-        nn.init.xavier_uniform_(self._actor_linear.weight)
-        nn.init.constant_(self._actor_linear.bias, 0.)
-        # nn.init.xavier_uniform_(self._critic_linear.weight)
-        # nn.init.constant_(self._critic_linear.bias, 0.)
-        for layer in self._critic_head:
-            if isinstance(layer, nn.Linear):
-                xavier_uniform_(layer.weight)
-                constant_(layer.bias, 0.)
+        modules_to_init = [
+        self.actor_head,              # nn.Linear
+        self.critic_head,             # nn.Sequential
+        self.global_encoder,          # nn.Linear
+        self.edge_encoder,            # nn.Linear
+        ]
+        for module in modules_to_init:
+            if isinstance(module, nn.Linear):
+                nn.init.orthogonal_(module.weight, gain=1.0)
+                nn.init.constant_(module.bias, 0.0)
+            elif isinstance(module, nn.Sequential):
+                for layer in module:
+                    if isinstance(layer, nn.Linear):
+                        nn.init.orthogonal_(layer.weight, gain=1.0)
+                        nn.init.constant_(layer.bias, 0.0)
+        # GraphTransformer 내부 Linear 계층 초기화
+        if hasattr(self._graph_transformer, "_input_linear"):
+            nn.init.orthogonal_(self._graph_transformer._input_linear.weight, gain=1.0)
+            nn.init.constant_(self._graph_transformer._input_linear.bias, 0.0)
+        if hasattr(self._graph_transformer, "_node_embedding_linear"):
+            nn.init.orthogonal_(self._graph_transformer._node_embedding_linear.weight, gain=1.0)
+            nn.init.constant_(self._graph_transformer._node_embedding_linear.bias, 0.0)
+        if hasattr(self._graph_transformer, "_fusion_linear"):
+            nn.init.orthogonal_(self._graph_transformer._fusion_linear.weight, gain=1.0)
+            nn.init.constant_(self._graph_transformer._fusion_linear.bias, 0.0)
+        # MetaLayer 내부 모듈(옵션: 각 레이어 별로 커스텀 초기화)
+        for layer in self.layers:
+            for submodule in [layer.edge_model, layer.node_model, layer.global_model]:
+                for mod in submodule.modules():
+                    if isinstance(mod, nn.Linear):
+                        nn.init.orthogonal_(mod.weight, gain=1.0)
+                        nn.init.constant_(mod.bias, 0.0)
 
-    def forward(self, input, node_embedding, edge_attr, edge_index, ptr, batch):
-        x = self._graph_transformer(input=input, node_embedding=node_embedding,
-                                    edge_attr=edge_attr, edge_index=edge_index)
-        value = self._attention_pool(x, batch)
-        value = self._critic_head(value)[:, 0]  # batch
-        policy_logit = self._actor_linear(x)  # batch/node, action
+
+    def forward(self, input, node_embedding, edge_attr, edge_index, ptr, batch, global_feat):
+        # Graph Transformer 통과
+        x = self._graph_transformer(
+            input=input, 
+            node_embedding=node_embedding,
+            edge_attr=edge_attr, 
+            edge_index=edge_index
+        )                                           # [N, d_model]
+        edge_attr = self.edge_encoder(edge_attr)    # [E, d_model]
+        u = self.global_encoder(global_feat)        # [B, d_model]
+        for layer in self.layers:
+            x, edge_attr, u = layer(x, edge_index, edge_attr, u, batch)
+
+        # 3. Critic: u→MLP
+        value = self.critic_head(u).squeeze(-1)     # [B]
+
+        # Actor 정책 로짓
+        policy_logit = self.actor_head(x)
         num_batch = int(ptr.shape[0]) - 1
         policy_logit_list = []
+        
         for idx in range(num_batch):
-            l = policy_logit[ptr[idx]: ptr[idx + 1], :]  # node, action
-            l = torch.reshape(l, shape=(-1, *self._action_shape))  # node, action_dim
+            l = policy_logit[ptr[idx]: ptr[idx + 1], :]
+            l = torch.reshape(l, shape=(-1, *self._action_shape))
             policy_logit_list.append(l)
+        
         return policy_logit_list, value
 
 
@@ -144,8 +200,7 @@ class GraphTransformer(nn.Module):
         x = node_embedding
         for layer in self._layer_list:
             combined_features = torch.cat([x, input, node_embedding], dim=-1)
-            fused_update = self._fusion_linear(combined_features)
-            x = x + fused_update
+            x = self._fusion_linear(combined_features)
             x = layer(x, edge_attr, edge_index)
         x = self.final_norm(x)
         return x
@@ -215,3 +270,52 @@ class GraphTransformerLayer(nn.Module):
         x = x + self.dropout2(x2)
 
         return x
+
+
+class EdgeModel(nn.Module):
+    def __init__(self, edge_dim, node_dim, global_dim, hidden_dim):
+        super().__init__()
+        self.mlp = nn.Sequential(
+            nn.Linear(edge_dim + 2 * node_dim + global_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, edge_dim)
+        )
+    def forward(self, src, dest, edge_attr, u, batch):
+        # src, dest: [num_edges, node_dim], edge_attr: [num_edges, edge_dim], u: [num_graphs, global_dim], batch: [num_edges]
+        u_per_edge = u[batch]
+        h = torch.cat([src, dest, edge_attr, u_per_edge], dim=-1)
+        return self.mlp(h)
+
+
+class NodeModel(nn.Module):
+    def __init__(self, node_dim, edge_dim, global_dim, hidden_dim):
+        super().__init__()
+        self.mlp = nn.Sequential(
+            nn.Linear(node_dim + edge_dim + global_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, node_dim)
+        )
+    def forward(self, x, edge_index, edge_attr, u, batch):
+        # Message aggregation: mean of incoming edge features
+        row, col = edge_index
+        agg = scatter_mean(edge_attr, col, dim=0, dim_size=x.size(0))
+        u_per_node = u[batch]
+        h = torch.cat([x, agg, u_per_node], dim=-1)
+        return self.mlp(h)
+
+
+class GlobalModel(nn.Module):
+    def __init__(self, node_dim, edge_dim, global_dim, hidden_dim):
+        super().__init__()
+        self.mlp = nn.Sequential(
+            nn.Linear(global_dim + node_dim + edge_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, global_dim)
+        )
+    def forward(self, x, edge_index, edge_attr, u, batch):
+        # x/edge_attr: [num_nodes/edges, d_model], batch: [num_nodes], edge_batch: [num_edges]
+        edge_batch = batch[edge_index[0]]
+        x_mean = global_mean_pool(x, batch)
+        edge_mean = global_mean_pool(edge_attr, edge_batch)
+        h = torch.cat([u, x_mean, edge_mean], dim=-1)
+        return self.mlp(h)

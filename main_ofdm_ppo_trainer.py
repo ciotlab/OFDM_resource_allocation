@@ -72,7 +72,7 @@ class MainOfdmPpoTrainer:
 
     def simulation(self):
         # Start serv
-        serve.start(detached=True, logging_config={"log_level": logging.WARNING})
+        serve.start(detached=True, logging_config={"log_level": logging.WARNING}, http_options={"port": 8100})
         inference_server = create_inference_server(max_batch_size=self.run_conf['serve_max_batch_size'],
                                                    batch_wait_timeout_s=self.run_conf['serve_batch_wait_timeout_s'])
         serve_deployment = inference_server.options(num_replicas=self.run_conf['serve_num_replicas'],

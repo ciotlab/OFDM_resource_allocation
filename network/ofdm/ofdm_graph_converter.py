@@ -20,7 +20,7 @@ class OFDMGraphConverter(GraphConverter):
         ch_quant[ch_quant < 0] = 0
         ch_quant[ch_quant >= self.num_power_attn_level] = self.num_power_attn_level - 1  # ue, bs, rb, beam
         assoc = network['assoc']  # ue
-        num_link = ch.shape[0]
+        num_link, num_bs, num_rb, num_beam = ch.shape
         node_attr = []
         edge_index = []
         edge_attr = []
@@ -35,7 +35,7 @@ class OFDMGraphConverter(GraphConverter):
                     edge_index.append(np.array((i, l)))
                     edge_attr.append(interf_quant)
         node_attr = torch.tensor(np.stack(node_attr, axis=0), dtype=torch.int32)
-        edge_index = torch.tensor(np.stack(edge_index, axis=1), dtype=torch.int32)
+        edge_index = torch.tensor(np.stack(edge_index, axis=1), dtype=torch.long)
         edge_attr = torch.tensor(np.stack(edge_attr, axis=0), dtype=torch.int32)
         graph = Data(x=node_attr, edge_index=edge_index, edge_attr=edge_attr)
         return graph

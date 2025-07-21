@@ -19,6 +19,7 @@ class OFDMActorCritic(nn.Module):
         self.action_shape = (self.num_rb, self.num_tx_power_level, self.num_beam)
         self.actor_critic = ActorCritic(input_dim=self.input_dim, embedding_dim=self.embedding_dim,
                                         edge_dim=self.edge_dim, action_shape=self.action_shape, **model_conf)
+        self.max_bs_power = network_conf['environment']['max_bs_power']
 
     def forward(self, data):
         # data: list of dictionary of graph, power_level, beam_idx, allocated
@@ -36,6 +37,8 @@ class OFDMActorCritic(nn.Module):
         beam_idx = F.one_hot(beam_idx.long(), self.num_beam).float()  # batch/node, rb, beam
         beam_idx[torch.logical_not(allocated[:, :, None].expand(-1, -1, self.num_beam))] = 0.0
         input = torch.cat([power_level, beam_idx], dim=2).flatten(start_dim=-2, end_dim=-1)  # batch/node, input_dim
+
+        global_feat = torch.tensor(np.full((len(graph), 1), self.max_bs_power, dtype=np.float32)).to(device)    # [batch_size, 1]  
         # Process graph
         g = Batch.from_data_list(graph)
         node_power_attn, edge_power_attn, edge_index, ptr, batch = (
@@ -45,5 +48,5 @@ class OFDMActorCritic(nn.Module):
         node_embedding = node_power_attn.flatten(start_dim=-3, end_dim=-1)  # batch/node, embedding_dim
         edge_attr = edge_power_attn.flatten(start_dim=-3, end_dim=-1)  # batch/edge, edge_dim
         policy_logit_list, value = self.actor_critic(input=input, node_embedding=node_embedding, edge_attr=edge_attr,
-                                                     edge_index=edge_index, ptr=ptr, batch=batch)
+                                                     edge_index=edge_index, ptr=ptr, batch=batch, global_feat=global_feat)
         return policy_logit_list, value
