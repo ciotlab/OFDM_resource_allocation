@@ -146,6 +146,9 @@ class MainOfdmPpoTrainer:
 
 if __name__ == "__main__":
     trainer = MainOfdmPpoTrainer(config_file='ofdm_ppo_config.yaml', checkpoint_dir='ofdm_ppo')
+    ray.get(trainer.model_actor.load_checkpoint.remote(
+        file_name='checkpoint_67.pkl'
+    ))
     trainer.run(use_wandb=True)
 
 

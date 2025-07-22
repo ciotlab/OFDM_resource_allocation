@@ -73,7 +73,19 @@ def ppo_train_loop_per_worker(config):
                                                                   torch.tensor(1 - train_conf['ppo_clip'], device=device)))
             actor_loss = -torch.mean(clipped_action_prob_ratio * advantage)
             entropy_loss = -torch.mean(entropy)
-            value_loss = nn.MSELoss()(v, returns)       #### is it value? v?
+
+            # Compute the unclipped value prediction and the clipped version
+            v_pred = v.squeeze(-1)  # ensure shape [B]
+            v_old = value.detach()  # previous estimate
+            # Clip v_pred to be within epsilon of v_old
+            v_clip = v_old + torch.clamp(v_pred - v_old,
+                                        min=-train_conf['ppo_clip'],
+                                        max= train_conf['ppo_clip'])
+            # Compute two MSE losses: unclipped and clipped
+            value_loss_unclipped = nn.MSELoss()(v_pred, returns)
+            value_loss_clipped   = nn.MSELoss()(v_clip,  returns)
+            # Final value loss is the maximum of the two
+            value_loss = torch.mean(torch.max(value_loss_unclipped, value_loss_clipped))
             total_loss = (actor_loss + train_conf['entropy_loss_weight'] * entropy_loss
                           + train_conf['value_loss_weight'] * value_loss)
             optimizer.zero_grad()
