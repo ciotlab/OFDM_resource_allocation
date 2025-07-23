@@ -115,8 +115,8 @@ def main():
     print("네트워크 액터가 성공적으로 생성되었습니다.")
 
     # --- 4. 데이터셋 생성 및 저장 ---
-    num_validation_networks = 40  # 생성할 검증용 데이터셋 개수
-    num_test_networks = 40       # 생성할 테스트용 데이터셋 개수
+    num_validation_networks = 20  # 생성할 검증용 데이터셋 개수
+    num_test_networks = 20       # 생성할 테스트용 데이터셋 개수
 
     # Validation 데이터셋 생성
     print(f"\n--- 검증용(validation) 데이터셋 {num_validation_networks}개 생성 시작 ---")

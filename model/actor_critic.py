@@ -74,6 +74,7 @@ class ActionDistribution:
         self._dist = None
         if not torch.all(torch.isinf(logit)):
             self._dist = Categorical(logits=logit)
+            self._probs = self._dist.probs
 
     def sample(self):
         if self._dist is not None:
@@ -105,6 +106,8 @@ class ActionDistribution:
             lp = None
         return lp
 
+    def probs(self):
+        return self._probs
 
 class GraphTransformer(nn.Module):
     def __init__(self, input_dim, embedding_dim, num_layers, d_model, n_head, edge_dim, dim_feedforward, dropout, activation="relu", device='cpu'):

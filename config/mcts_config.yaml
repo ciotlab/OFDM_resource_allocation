@@ -31,7 +31,7 @@ model:
 run:
   num_episodes: 100
   num_simulations_per_episode: 32
-  num_simulator: 16
+  num_simulator: 64
   serve_num_replicas: 4
   serve_max_ongoing_requests: 35
   serve_max_batch_size: 32
@@ -40,17 +40,14 @@ run:
 
 # simulation config
 simulation:
+  num_simulations: 400
+  cpuct: 1.0
   gamma: 0.99  # for computing lambda returns
   lamb: 0.5  # for computing lambda returns (0: TD(1), 1: MC)
-  max_num_steps: 4000  # null if no limitation
 
 # neural network train config
 train:
   num_epochs_per_episode: 3
   batch_size: 64
   learning_rate: 0.0003
-  act_prob_ratio_exponent_clip: 1.0
-  ppo_clip: 0.1
-  entropy_loss_weight: 0.05
-  value_loss_weight: 1.0
-  clip_max_norm: 1.0
+
